@@ -1,124 +1,111 @@
-import { useState } from "react";
-// --- MUDANÇA: Importar hooks de navegação e redirecionamento ---
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
-// --- FIM DA MUDANÇA ---
+import { useState, FormEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { Navigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 export default function Login() {
-  const [login, setLogin] = useState("");
-  const [senha, setSenha] = useState("");
+  const [login, setLogin] = useState("admin");
+  const [senha, setSenha] = useState("admin123");
   const [isLoading, setIsLoading] = useState(false);
+  const { user, login: authLogin } = useAuth();
 
-  const auth = useAuth();
-  // --- MUDANÇA: Inicializar os hooks de navegação ---
-  const navigate = useNavigate();
-  const location = useLocation();
-  // Pega a página de "origem" (para onde o usuário ia) ou volta para "/"
-  const from = location.state?.from?.pathname || "/";
-  // --- FIM DA MUDANÇA ---
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!login || !senha) {
-      toast.error("Por favor, preencha o login e a senha.");
-      return;
-    }
-
     setIsLoading(true);
     console.log(`[Login] Tentando logar com: ${login}`);
 
     try {
-      const response = await fetch("http://localhost:5000/api/login", {
+      // --- MUDANÇA AQUI ---
+      // Usa a variável de ambiente para a URL da API
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/login`;
+      console.log(`[Login] Conectando em: ${apiUrl}`); // Log para depuração
+      // --- FIM DA MUDANÇA ---
+
+      const response = await fetch(apiUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ login, senha }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Erro desconhecido no login");
+        console.error("[Login] Erro da API:", data.error);
+        throw new Error(data.error || "Falha no login");
       }
 
-      // SUCESSO!
-      auth.login(data.access_token, data.user);
-
-      // --- MUDANÇA: Forçar o redirecionamento após o login ---
-      // 'replace: true' limpa o histórico de login (o usuário não pode "voltar" para o login)
-      navigate(from, { replace: true });
-      // --- FIM DA MUDANÇA ---
-    } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Ocorreu um erro";
-      console.error("[Login] Falha no login:", errorMessage);
-      toast.error(errorMessage);
+      console.log("[Login] Login bem-sucedido, recebido:", data);
+      if (data.access_token && data.user) {
+        authLogin(data.access_token, data.user);
+      } else {
+        throw new Error("Resposta de login inválida do servidor.");
+      }
+    } catch (error) {
+      console.error("[Login] Falha no login:", (error as Error).message, error);
+      toast.error("Falha no Login", {
+        description: (error as Error).message,
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- MUDANÇA: Se o usuário já estiver logado, redireciona AGORA ---
-  // Isso impede que um usuário logado acesse a página /login
-  if (auth.isLoading) {
-    // Se ainda estiver checando o localStorage, mostre um spinner
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (auth.token) {
-    console.log(
-      "[Login] Usuário já logado, redirecionando para o dashboard..."
-    );
+  if (user) {
     return <Navigate to="/" replace />;
   }
-  // --- FIM DA MUDANÇA ---
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
-      <div className="w-full max-w-md p-8 space-y-6 bg-card rounded-lg shadow-lg">
-        <h1 className="text-2xl font-bold text-center text-foreground">
-          Acessar Sistema TCA
-        </h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="login">Login</Label>
-            <Input
-              id="login"
-              type="text"
-              placeholder="Digite seu login"
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="senha">Senha</Label>
-            <Input
-              id="senha"
-              type="password"
-              placeholder="Digite sua senha"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              "Entrar"
-            )}
-          </Button>
-        </form>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-center text-2xl font-bold">
+            Sistema de Consulta GEO
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="login">Usuário</Label>
+              <Input
+                id="login"
+                type="text"
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                placeholder="Seu usuário"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="senha">Senha</Label>
+              <Input
+                id="senha"
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                placeholder="Sua senha"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Entrando...
+                </>
+              ) : (
+                "Entrar"
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

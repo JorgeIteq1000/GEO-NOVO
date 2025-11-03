@@ -1,7 +1,9 @@
 // src/pages/Configuracoes.tsx
-// (Novo arquivo completo)
+// (Arquivo completo com a correção de navegação)
 
+// --- MUDANÇA 1: Importar o 'useNavigate' ---
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom"; // <-- ADICIONADO
 import Sidebar from "@/components/Sidebar";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
@@ -53,7 +55,11 @@ export default function Configuracoes() {
   const [senha, setSenha] = useState("");
   const [role, setRole] = useState<"User" | "Admin">("User");
 
-  const API_URL = "http://localhost:5000/api/colaboradores";
+  // --- MUDANÇA 2: Inicializar o 'navigate' ---
+  const navigate = useNavigate(); // <-- ADICIONADO
+
+  // Pega a URL da API das variáveis de ambiente
+  const API_URL = `${import.meta.env.VITE_API_BASE_URL}/api/colaboradores`;
 
   // Função para buscar os dados
   const fetchColaboradores = async () => {
@@ -136,12 +142,9 @@ export default function Configuracoes() {
       `[Configurações] Atualizando ID ${id}: Campo ${field}, Valor ${value}`
     );
 
-    // Encontra o usuário no estado local para ter os dados completos
     const userToUpdate = colaboradores.find((c) => c.id === id);
     if (!userToUpdate) return;
 
-    // Monta o payload (corpo da requisição)
-    // O backend espera ambos os campos
     const payload = {
       role: field === "role" ? value : userToUpdate.role,
       is_ativo: field === "is_ativo" ? value : userToUpdate.is_ativo,
@@ -160,7 +163,6 @@ export default function Configuracoes() {
       }
 
       toast.success("Usuário atualizado com sucesso!");
-      // Atualiza a lista localmente para refletir a mudança
       setColaboradores(
         colaboradores.map((c) => (c.id === id ? { ...c, [field]: value } : c))
       );
@@ -169,22 +171,30 @@ export default function Configuracoes() {
       toast.error("Erro ao atualizar usuário.", {
         description: (error as Error).message,
       });
-      // Recarrega a lista do zero em caso de erro para reverter a mudança otimista
       fetchColaboradores();
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Usamos a prop 'Configuracoes' para a Sidebar saber qual item marcar */}
+      {/* --- MUDANÇA 3: Lógica de navegação no Sidebar corrigida --- */}
       <Sidebar
         activeSection={"Configuracoes"}
         onSectionChange={(section) => {
-          // Se o usuário clicar em outra seção, nós navegamos
-          window.location.href =
-            section === "Dashboard" ? "/" : `/${section.toLowerCase()}`;
+          // Se o usuário clicar na aba atual ("Configurações"), não faz nada.
+          if (section === "Configuracoes") {
+            return;
+          }
+
+          // Se clicar em QUALQUER OUTRA aba (Pessoa, Documento, etc.),
+          // navega de volta para a rota principal "/", onde o Dashboard está.
+          console.log(
+            `[Configurações] Navegando de volta para o Dashboard (/)`
+          );
+          navigate("/");
         }}
       />
+      {/* --- FIM DA MUDANÇA --- */}
 
       <main className="ml-64 p-8">
         <div className="max-w-7xl mx-auto space-y-6">

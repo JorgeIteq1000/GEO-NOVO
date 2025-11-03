@@ -45,9 +45,9 @@ export default function Dashboard() {
     setError(null);
 
     try {
-      const apiUrl = `http://localhost:5000/api/search/all?q=${encodeURIComponent(
-        query
-      )}&cpf=${isCpfSearch}`;
+      const apiUrl = `${
+        import.meta.env.VITE_API_BASE_URL
+      }/api/search/all?q=${encodeURIComponent(query)}&cpf=${isCpfSearch}`;
 
       console.log(`[Modo Turbo Dashboard] Chamando API Global: ${apiUrl}`);
 
