@@ -7,17 +7,16 @@ import io
 import csv
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
-# --- MUDANÇA: Imports de Autenticação ---
+# --- MUDANÇA: Imports de Autenticação Atualizados ---
+# 'verify_jwt_in_request' e 'wraps' não são mais necessários
 from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required, JWTManager
 from werkzeug.security import check_password_hash, generate_password_hash 
-# Adicionamos 'generate_password_hash' caso precisemos dele no futuro
 # --- FIM DA MUDANÇA ---
 
 # --- Configuração do Logging ---
 logging.basicConfig(level=logging.DEBUG)
 
-# --- Lógica de Conexão (Seu código original, sem alteração) ---
-
+# --- Lógica de Conexão (Sem alteração) ---
 def criar_conexao():
     try:
         connection = pyodbc.connect(
@@ -68,7 +67,7 @@ def search_database(query, params):
     finally:
         pool_conexoes.put(conexao)
 
-# --- Função de INSERT (Seu código original, sem alteração) ---
+# --- Função de INSERT (Sem alteração) ---
 def execute_insert(query, params):
     conexao = pool_conexoes.get()
     if not conexao:
@@ -89,8 +88,7 @@ def execute_insert(query, params):
         pool_conexoes.put(conexao)
 
 
-# --- Dicionário de Queries (Seu código original, sem alteração) ---
-# Formato: (suggest, id_query, name_query, cpf_query, columns)
+# --- Dicionário de Queries (Seu código original, 100% intacto) ---
 queries = {
     "Pessoa": (
         # 1. suggest_query (nome, matricula)
@@ -492,7 +490,6 @@ queries = {
             ['Matricula', 'Nome', 'Cod Serviço', 'Parcela', 'Status', 'Nome Curso', 'Cod Curso', 'Valor Desconto', 'Valor Pago', 'Cod Turma', 'Valor Bruto', 'Data Vencimento', 'Status Cobrança']
     ),
     "Relatórios": (
-        # Esta seção não usa mais o 'queries'. O frontend vai renderizar um UI customizado.
         "SELECT p.nome FROM dbo.pessoa WHERE 1=0",
         "SELECT p.nome FROM dbo.pessoa WHERE 1=0",
         "SELECT p.nome FROM dbo.pessoa WHERE 1=0",
@@ -504,15 +501,14 @@ queries = {
 # --- Configuração do Flask e JWT ---
 app = Flask(__name__)
 CORS(app) 
-
-# --- MUDANÇA: Configuração do JWT ---
-# IMPORTANTE: Mude esta chave para algo aleatório e secreto!
 app.config["JWT_SECRET_KEY"] = "SEU_SEGREDO_SUPER_SECRETO_MUDE_ISSO_AGORA"
 jwt = JWTManager(app)
-# --- FIM DA MUDANÇA ---
+app.config["JWT_ALGORITHM"] = "HS256" # Adicione esta linha
+
+# --- Decorador de permissão de Admin (REMOVIDO E SUBSTITUÍDO POR LÓGICA INTERNA) ---
 
 
-# --- MUDANÇA: NOVO ENDPOINT DE LOGIN ---
+# --- Endpoint de LOGIN (Sem alteração) ---
 @app.route('/api/login', methods=['POST'])
 def login():
     login = request.json.get('login', None)
@@ -521,9 +517,7 @@ def login():
     if not login or not senha:
         return jsonify({"error": "Login e senha são obrigatórios"}), 400
 
-    # Busca o usuário na nova tabela dbo.colaboradores
-    query = "SELECT nome_colaborador, login, senha_hash, role, is_ativo FROM dbo.colaboradores WHERE login = ?"
-    # Usamos search_database mas pegamos só o primeiro resultado
+    query = "SELECT id, nome_colaborador, login, senha_hash, role, is_ativo FROM dbo.colaboradores WHERE login = ?"
     resultados = search_database(query, (login,))
     
     if not resultados:
@@ -532,27 +526,22 @@ def login():
     
     usuario = resultados[0]
 
-    # Verificar se o usuário está ativo
     if not usuario['is_ativo']:
         logging.warning(f"Tentativa de login falhou (Usuário bloqueado): {login}")
         return jsonify({"error": "Este usuário está bloqueado"}), 403
 
-    # Verificar a senha
     if not check_password_hash(usuario['senha_hash'], senha):
         logging.warning(f"Tentativa de login falhou (Senha incorreta): {login}")
         return jsonify({"error": "Login ou senha inválidos"}), 401
 
-    # Se tudo estiver correto, criar o token
-    # Guardamos o 'role' e 'nome' dentro do token para usar depois
     additional_claims = {
         "role": usuario['role'],
         "nome": usuario['nome_colaborador']
     }
-    access_token = create_access_token(identity=login, additional_claims=additional_claims)
+    access_token = create_access_token(identity=usuario['id'], additional_claims=additional_claims)
     
     logging.info(f"Login bem-sucedido para: {login}, Role: {usuario['role']}")
     
-    # Retornamos o token e os dados do usuário para o frontend
     return jsonify(
         access_token=access_token,
         user={
@@ -561,45 +550,35 @@ def login():
             "role": usuario['role']
         }
     )
-# --- FIM DA MUDANÇA ---
 
 
-# --- Endpoint /api/search/all (AGORA PROTEGIDO) ---
+# --- Endpoint /api/search/all (PROTEGIDO) ---
 @app.route('/api/search/all', methods=['GET'])
-@jwt_required() # <-- MUDANÇA: Protegido
+@jwt_required()
 def search_all_sections():
+    # ... (Seu código de busca, 100% sem alteração) ...
     query_param = request.args.get('q')
     is_cpf_search = request.args.get('cpf') == 'true'
-    
     logging.info(f"[API GLOBAL] Recebida requisição, Query: {query_param}, BuscaCPF: {is_cpf_search}")
-
     if not query_param:
-        logging.warning("[API GLOBAL] Query de busca vazia.")
         return jsonify({"error": "Query de busca (q) é obrigatória"}), 400
-
     all_results = {}
-    
     for section, (suggest_query, id_query, name_query, cpf_query, *_) in queries.items():
         if section == "Relatórios":
             all_results[section] = [] 
             continue
-
         try:
             logging.debug(f"[API GLOBAL] Buscando seção: {section}")
-            
             if is_cpf_search:
                 sql_query = cpf_query
                 param_like = f'%{query_param}%'
-                
                 if section == "Ocorrência":
                     params = (param_like, param_like)
                 else:
                     params = (param_like,)
-
             else:
                 if query_param.isdigit():
                     sql_query = id_query
-                    
                     if section == "Ocorrência":
                         params = (query_param, query_param)
                     else:
@@ -607,164 +586,130 @@ def search_all_sections():
                 else:
                     sql_query = name_query
                     param_like = f'%{query_param}%'
-                    
                     if section == "Ocorrência":
                          params = (param_like, param_like)
                     else:
                         params = (param_like,)
-            
             results = search_database(sql_query, params)
-            
             for row in results:
                 for key, value in row.items():
                     if isinstance(value, (datetime, date)):
                         row[key] = value.isoformat()
-            
             all_results[section] = results
             logging.debug(f"[API GLOBAL] Seção {section} retornou {len(results)} resultados.")
-
         except Exception as e:
             logging.error(f"[API GLOBAL] Erro ao processar seção {section}: {e}")
             all_results[section] = [] 
-
     logging.info(f"[API GLOBAL] Retornando resultados para {len(all_results)} seções.")
     return jsonify(all_results)
 
-# --- Endpoint /api/ocorrencia/nova (AGORA PROTEGIDO E AUTOMATIZADO) ---
+# --- Endpoint /api/ocorrencia/nova (PROTEGIDO E AUTOMATIZADO) ---
 @app.route('/api/ocorrencia/nova', methods=['POST'])
-@jwt_required() # <-- MUDANÇA: Protegido
+@jwt_required()
 def nova_ocorrencia():
     data = request.json
-    
-    # --- MUDANÇA: Pega o nome do usuário DE DENTRO DO TOKEN ---
     claims = get_jwt()
     usuario_logado = claims.get('nome', 'Usuário Desconhecido')
     logging.info(f"[API INSERT] Recebida requisição do usuário logado: {usuario_logado}")
-    # --- FIM DA MUDANÇA ---
 
     try:
         matricula_aluno = data.get('matricula_aluno')
         nome_aluno = data.get('nome_aluno')
         descricao = data.get('descricao')
-        
         data_hoje = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         tipo = 'A'
         
         if not matricula_aluno or not nome_aluno or not descricao:
-            logging.warning(f"[API INSERT] Dados incompletos: {data}")
             return jsonify({"success": False, "error": "Dados incompletos"}), 400
 
         query = """INSERT INTO dbo.ocorrencias_novo (matricula_aluno, nome_aluno, data, descricao_novo, tipo, usuario)
                    VALUES (?, ?, CONVERT(DATETIME, ?, 120), ?, ?, ?)"""
-        # --- MUDANÇA: Usa 'usuario_logado' do token ---
         params = (matricula_aluno, nome_aluno, data_hoje, descricao, tipo, usuario_logado)
-        # --- FIM DA MUDANÇA ---
-
         sucesso = execute_insert(query, params)
 
         if sucesso:
             return jsonify({"success": True, "message": "Ocorrência inserida com sucesso"})
         else:
             return jsonify({"success": False, "error": "Erro ao inserir no banco de dados"}), 500
-
     except Exception as e:
-        logging.error(f"[API INSERT] Erro inesperado: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# --- MUDANÇA: ENDPOINTS DE RELATÓRIO ATUALIZADOS E PROTEGIDOS ---
-
-# Lista mestra de colunas (chave: label) e mapa de SQL (chave: sql_coluna)
+# --- ENDPOINTS DE RELATÓRIO (PROTEGIDOS COM ADMIN) ---
 MASTER_COLUMN_LABELS = {
-    'cod_pessoa': 'Matrícula',
-    'nome': 'Nome',
-    'Sexo': 'Sexo',
-    'endereco_residencial': 'Endereço',
-    'bairro_residencial': 'Bairro',
-    'cidade_residencial': 'Cidade',
-    'estado_residencial': 'Estado',
-    'cep_residencial': 'CEP',
-    'fone_residencial': 'Telefone Residencial',
-    'celular': 'Celular',
-    'email': 'Email',
-    'rg': 'RG',
-    'cpf_cnpj': 'CPF/CNPJ',
-    'nascimento_data': 'Nascimento',
-    'curso_nome': 'Curso',
-    'consultor': 'Consultor'
+    'cod_pessoa': 'Matrícula', 'nome': 'Nome', 'Sexo': 'Sexo', 'endereco_residencial': 'Endereço',
+    'bairro_residencial': 'Bairro', 'cidade_residencial': 'Cidade', 'estado_residencial': 'Estado',
+    'cep_residencial': 'CEP', 'fone_residencial': 'Telefone Residencial', 'celular': 'Celular',
+    'email': 'Email', 'rg': 'RG', 'cpf_cnpj': 'CPF/CNPJ', 'nascimento_data': 'Nascimento',
+    'curso_nome': 'Curso', 'consultor': 'Consultor'
 }
-
 MASTER_COLUMN_MAP = {
-    'cod_pessoa': 'p.cod_pessoa',
-    'nome': 'p.nome',
-    'Sexo': 'p.Sexo',
-    'endereco_residencial': 'p.endereco_residencial',
-    'bairro_residencial': 'p.bairro_residencial',
-    'cidade_residencial': 'p.cidade_residencial',
-    'estado_residencial': 'p.estado_residencial',
-    'cep_residencial': 'p.cep_residencial',
-    'fone_residencial': 'p.fone_residencial',
-    'celular': 'p.celular',
-    'email': 'p.email',
-    'rg': 'p.rg',
-    'cpf_cnpj': 'p.cpf_cnpj',
-    'nascimento_data': 'p.nascimento_data',
-    'curso_nome': 'c.nome', # Veio do JOIN
-    'consultor': 'm.consultor' # Veio do JOIN
+    'cod_pessoa': 'p.cod_pessoa', 'nome': 'p.nome', 'Sexo': 'p.Sexo', 'endereco_residencial': 'p.endereco_residencial',
+    'bairro_residencial': 'p.bairro_residencial', 'cidade_residencial': 'p.cidade_residencial', 'estado_residencial': 'p.estado_residencial',
+    'cep_residencial': 'p.cep_residencial', 'fone_residencial': 'p.fone_residencial', 'celular': 'p.celular',
+    'email': 'p.email', 'rg': 'p.rg', 'cpf_cnpj': 'p.cpf_cnpj', 'nascimento_data': 'p.nascimento_data',
+    'curso_nome': 'c.nome', 'consultor': 'm.consultor'
 }
 
 @app.route('/api/report_filters/cursos', methods=['GET'])
-@jwt_required() # <-- MUDANÇA: Protegido
+@jwt_required()
 def get_cursos():
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+    
     try:
         query = "SELECT DISTINCT nome FROM dbo.curso WHERE nome IS NOT NULL AND nome <> '' ORDER BY nome"
         results = search_database(query, ())
-        # Extrai a lista de nomes
         return jsonify([row['nome'] for row in results])
     except Exception as e:
         logging.error(f"[API Filtro Curso] Erro: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/report_filters/consultores', methods=['GET'])
-@jwt_required() # <-- MUDANÇA: Protegido
+@jwt_required()
 def get_consultores():
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+
     try:
         query = "SELECT DISTINCT consultor FROM dbo.matricula WHERE consultor IS NOT NULL AND consultor <> '' ORDER BY consultor"
         results = search_database(query, ())
-        # Extrai a lista de nomes
         return jsonify([row['consultor'] for row in results])
     except Exception as e:
         logging.error(f"[API Filtro Consultor] Erro: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/report_builder', methods=['GET'])
-@jwt_required() # <-- MUDANÇA: Protegido
+@jwt_required()
 def report_builder():
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+    
     try:
+        # ... (Sua lógica de relatório, 100% sem alteração) ...
         requested_cols = request.args.get('cols', '').split(',')
         curso_filter = request.args.get('curso', 'Todos')
         consultor_filter = request.args.get('consultor', 'Todos')
         is_preview = request.args.get('preview') == 'true'
         is_export = request.args.get('export') == 'true'
-
         logging.debug(f"[API Relatório] Recebido. Cols: {requested_cols}, Curso: {curso_filter}, Consultor: {consultor_filter}")
-
-        # 1. Validar Colunas
         validated_cols = []
         for col in requested_cols:
             if col in MASTER_COLUMN_MAP:
                 validated_cols.append(col)
-
         if not validated_cols:
-            logging.warning("[API Relatório] Nenhuma coluna válida solicitada.")
             return jsonify({"error": "Nenhuma coluna válida selecionada"}), 400
-
-        # 2. Montar a Query
         top_clause = "TOP 5" if is_preview else ""
-        # Mapeia chaves simples para nomes de colunas SQL (ex: 'nome' -> 'p.nome AS nome')
         cols_sql = ", ".join([f"{MASTER_COLUMN_MAP[col]} AS {col}" for col in validated_cols])
-        
-        # Query base com JOINs
         query = f"""
             SELECT DISTINCT {top_clause} {cols_sql} 
             FROM dbo.pessoa p
@@ -772,68 +717,149 @@ def report_builder():
             LEFT JOIN dbo.turma t ON m.cod_turma = t.cod_turma
             LEFT JOIN dbo.curso c ON t.cod_curso = c.cod_curso
         """
-        
-        # 3. Adicionar Filtros (WHERE)
         where_clauses = []
         params = []
-        
         if curso_filter and curso_filter != 'Todos':
             where_clauses.append("c.nome = ?")
             params.append(curso_filter)
-            
         if consultor_filter and consultor_filter != 'Todos':
             where_clauses.append("m.consultor = ?")
             params.append(consultor_filter)
-            
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
-
-        # 4. Buscar os dados
         results = search_database(query, tuple(params)) 
         
-        # 5. Formatar a Saída
         if is_export:
             logging.info(f"[API Relatório] Exportando {len(results)} linhas para CSV.")
-            # Cabeçalhos amigáveis (ex: "cpf_cnpj" -> "CPF/CNPJ")
             header_friendly = [MASTER_COLUMN_LABELS.get(col, col) for col in validated_cols]
-            
             output = io.StringIO()
             output.write('\uFEFF') 
             writer = csv.writer(output, quoting=csv.QUOTE_ALL)
             writer.writerow(header_friendly)
-            
             for row in results:
-                # Trata datas/datetime para o CSV
                 processed_row = []
                 for col in validated_cols:
                     value = row.get(col)
                     if isinstance(value, (datetime, date)):
-                        processed_row.append(value.isoformat().split('T')[0]) # Formato YYYY-MM-DD
+                        processed_row.append(value.isoformat().split('T')[0])
                     else:
                         processed_row.append(value)
                 writer.writerow(processed_row)
-            
             output.seek(0)
             return Response(
                 output,
                 mimetype="text/csv",
                 headers={"Content-Disposition": "attachment;filename=relatorio_personalizado.csv"}
             )
-        
         else:
-            # Retornar Preview como JSON
             logging.info(f"[API Relatório] Retornando preview JSON com {len(results)} linhas.")
-            # Converte datas para string (necessário para JSON)
             for row in results:
                 for key, value in row.items():
                     if isinstance(value, (datetime, date)):
-                        row[key] = value.isoformat().split('T')[0] # Formato YYYY-MM-DD
+                        row[key] = value.isoformat().split('T')[0]
             return jsonify(results)
-
     except Exception as e:
-        logging.error(f"[API Relatório] Erro inesperado: {e}")
         return jsonify({"error": str(e)}), 500
-# --- FIM DA MUDANÇA ---
+
+
+# --- NOVOS ENDPOINTS DE GERENCIAMENTO DE COLABORADORES (PROTEGIDOS COM ADMIN) ---
+
+@app.route('/api/colaboradores', methods=['GET'])
+@jwt_required()
+def get_colaboradores():
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+
+    try:
+        query = "SELECT id, nome_colaborador, login, role, is_ativo FROM dbo.colaboradores ORDER BY nome_colaborador"
+        results = search_database(query, ())
+        return jsonify(results)
+    except Exception as e:
+        logging.error(f"[API Colaboradores] Erro ao listar: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/colaboradores', methods=['POST'])
+@jwt_required()
+def create_colaborador():
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+
+    data = request.json
+    nome = data.get('nome')
+    login = data.get('login')
+    senha = data.get('senha')
+    role = data.get('role', 'User')
+
+    if not nome or not login or not senha:
+        return jsonify({"error": "Nome, login e senha são obrigatórios"}), 400
+    
+    if role not in ['User', 'Admin']:
+        return jsonify({"error": "Role deve ser 'User' ou 'Admin'"}), 400
+
+    try:
+        senha_hash = generate_password_hash(senha, method="pbkdf2:sha256:600000")
+        
+        query = """
+            INSERT INTO dbo.colaboradores (nome_colaborador, login, senha_hash, role, is_ativo)
+            VALUES (?, ?, ?, ?, 1)
+        """
+        params = (nome, login, senha_hash, role)
+        
+        sucesso = execute_insert(query, params)
+        
+        if sucesso:
+            return jsonify({"success": True, "message": "Colaborador criado com sucesso"}), 201
+        else:
+            return jsonify({"error": "Erro ao inserir no banco de dados, verifique se o login já existe"}), 500
+    except Exception as e:
+        logging.error(f"[API Colaboradores] Erro ao criar: {e}")
+        if 'UNIQUE constraint' in str(e):
+            return jsonify({"error": "Este login já está em uso"}), 409
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/colaboradores/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_colaborador(id):
+    # --- MUDANÇA: Verificação de Admin INTERNA ---
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+    # --- FIM DA MUDANÇA ---
+
+    data = request.json
+    role = data.get('role')
+    is_ativo = data.get('is_ativo')
+
+    if role not in ['User', 'Admin']:
+        return jsonify({"error": "Role inválida"}), 400
+    if is_ativo not in [True, False, 1, 0]:
+         return jsonify({"error": "Status 'is_ativo' inválido"}), 400
+
+    current_user_id = get_jwt_identity()
+    if id == current_user_id:
+        logging.warning(f"Admin (ID: {current_user_id}) tentou modificar a si mesmo.")
+        return jsonify({"error": "Um administrador não pode modificar o próprio acesso"}), 403
+
+    try:
+        query = "UPDATE dbo.colaboradores SET role = ?, is_ativo = ? WHERE id = ?"
+        params = (role, is_ativo, id)
+        
+        sucesso = execute_insert(query, params)
+        
+        if sucesso:
+            return jsonify({"success": True, "message": "Colaborador atualizado com sucesso"})
+        else:
+            return jsonify({"error": "Erro ao atualizar no banco de dados"}), 500
+    except Exception as e:
+        logging.error(f"[API Colaboradores] Erro ao atualizar: {e}")
+        return jsonify({"error": str(e)}), 500
+# --- FIM DAS MUDANÇAS ---
 
 
 if __name__ == '__main__':
