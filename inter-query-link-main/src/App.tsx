@@ -1,3 +1,6 @@
+// src/App.tsx
+// (Arquivo ajustado, entregando completo conforme solicitado)
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,12 +10,11 @@ import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
 // --- NOSSAS NOVAS IMPORTAÇÕES ---
-// O "Cérebro" do Login
 import { AuthProvider } from "@/context/AuthContext";
-// A "Porta" de entrada
 import Login from "./pages/Login";
-// O "Segurança"
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AdminRoute from "@/components/AdminRoute"; // <-- 1. IMPORTAR O ADMINROUTE
+import Configuracoes from "./pages/Configuracoes"; // <-- 2. IMPORTAR A NOVA PÁGINA
 // --- FIM DAS NOVAS IMPORTAÇÕES ---
 
 const queryClient = new QueryClient();
@@ -20,28 +22,32 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      {/* 1. O AuthProvider (Cérebro) abraça tudo.
-           Agora todo o App sabe quem está logado.
-      */}
       <AuthProvider>
         <Toaster />
-        <Sonner richColors /> {/* Mantive seus Toasters */}
+        <Sonner richColors />
         <BrowserRouter>
           <Routes>
-            {/* 2. Rota de Login (Pública)
-                 Qualquer um pode acessar /login
-            */}
+            {/* Rota de Login (Pública) */}
             <Route path="/login" element={<Login />} />
 
-            {/* 3. Rota Principal (Protegida)
-                 Só pode acessar "/" quem estiver logado (passar pelo ProtectedRoute)
-            */}
+            {/* Rota Principal (Protegida por Login) */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
                   <Dashboard />
                 </ProtectedRoute>
+              }
+            />
+
+            {/* 3. NOVA ROTA DE CONFIGURAÇÕES (Protegida por Admin) */}
+            <Route
+              path="/configuracoes"
+              element={
+                <AdminRoute>
+                  {/* O AdminRoute vai garantir que só Admins cheguem aqui */}
+                  <Configuracoes />
+                </AdminRoute>
               }
             />
 

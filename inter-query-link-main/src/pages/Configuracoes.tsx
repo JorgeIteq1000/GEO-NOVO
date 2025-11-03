@@ -1,9 +1,17 @@
+// src/pages/Configuracoes.tsx
+// (Novo arquivo completo)
+
 import { useState, useEffect } from "react";
-import { useAuth } from "@/context/AuthContext";
-import { Navigate } from "react-router-dom";
+import Sidebar from "@/components/Sidebar";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -13,15 +21,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -30,18 +29,11 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-// import { Switch } from "@/components/ui/switch"; // (Não estamos usando o Switch, mas sim botões)
-import { Loader2, PlusCircle, UserX, UserCheck } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, UserPlus, Save } from "lucide-react";
 
-import Sidebar from "@/components/Sidebar";
-
-// Tipo para o objeto colaborador
+// Tipo para o Colaborador (baseado no seu api_server.py)
 interface Colaborador {
   id: number;
   nome_colaborador: string;
@@ -51,228 +43,215 @@ interface Colaborador {
 }
 
 export default function Configuracoes() {
-  // --- MUDANÇA: Chave '}' extra removida ---
-  const { user } = useAuth();
-  // --- FIM DA MUDANÇA ---
-
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  // Estados para o formulário de novo usuário
-  const [novoNome, setNovoNome] = useState("");
-  const [novoLogin, setNovoLogin] = useState("");
-  const [novaSenha, setNovaSenha] = useState("");
-  const [novoRole, setNovoRole] = useState<"User" | "Admin">("User");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Função para carregar os usuários
+  // Estados do Formulário de Novo Usuário
+  const [nome, setNome] = useState("");
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [role, setRole] = useState<"User" | "Admin">("User");
+
+  const API_URL = "http://localhost:5000/api/colaboradores";
+
+  // Função para buscar os dados
   const fetchColaboradores = async () => {
+    console.log("[Configurações] Buscando lista de colaboradores...");
     setIsLoading(true);
     try {
-      const response = await apiFetch(
-        "http://localhost:5000/api/colaboradores"
-      );
+      const response = await apiFetch(API_URL);
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Falha ao carregar usuários");
+        throw new Error("Falha ao buscar dados");
       }
-      const data = await response.json();
+      const data: Colaborador[] = await response.json();
+      console.log("[Configurações] Colaboradores recebidos:", data);
       setColaboradores(data);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("401")) {
-        // O apiFetch já vai lidar com isso, mas podemos ser explícitos
-        console.error("Erro de autenticação ao buscar colaboradores");
-      } else {
-        toast.error(err instanceof Error ? err.message : "Erro desconhecido");
-      }
+    } catch (error) {
+      console.error("[Configurações] Erro ao buscar colaboradores:", error);
+      toast.error("Erro ao carregar colaboradores.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Carrega os usuários ao montar a página
+  // Buscar dados ao carregar a página
   useEffect(() => {
     fetchColaboradores();
   }, []);
 
-  // Handler para criar novo usuário
-  const handleCreateUser = async () => {
-    if (!novoNome || !novoLogin || !novaSenha) {
-      toast.error("Nome, Login e Senha são obrigatórios.");
+  // Função para criar um novo colaborador
+  const handleCreateColaborador = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nome || !login || !senha) {
+      toast.warning("Preencha todos os campos obrigatórios.");
       return;
     }
+    console.log(
+      `[Configurações] Criando novo usuário: ${login}, Role: ${role}`
+    );
     setIsSubmitting(true);
     try {
-      const response = await apiFetch(
-        "http://localhost:5000/api/colaboradores",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            nome: novoNome,
-            login: novoLogin,
-            senha: novaSenha,
-            role: novoRole,
-          }),
-        }
-      );
+      const response = await apiFetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          nome,
+          login,
+          senha,
+          role,
+        }),
+      });
 
       const data = await response.json();
+
       if (!response.ok) {
         throw new Error(data.error || "Falha ao criar usuário");
       }
 
-      toast.success("Usuário criado com sucesso!");
-      setIsDialogOpen(false); // Fecha o modal
-      fetchColaboradores(); // Recarrega a lista
+      toast.success(`Usuário ${nome} criado com sucesso!`);
       // Limpa o formulário
-      setNovoNome("");
-      setNovoLogin("");
-      setNovaSenha("");
-      setNovoRole("User");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro desconhecido");
+      setNome("");
+      setLogin("");
+      setSenha("");
+      setRole("User");
+      // Atualiza a lista
+      fetchColaboradores();
+    } catch (error) {
+      console.error("[Configurações] Erro ao criar:", error);
+      toast.error("Erro ao criar usuário.", {
+        description: (error as Error).message,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Handler para atualizar (bloquear/promover)
-  const handleUpdateUser = async (
-    colaborador: Colaborador,
-    action: "toggleAtivo" | "toggleRole"
+  // Função para atualizar Role ou Status
+  const handleUpdateColaborador = async (
+    id: number,
+    field: "role" | "is_ativo",
+    value: "Admin" | "User" | boolean
   ) => {
-    let newRole = colaborador.role;
-    let newIsAtivo = colaborador.is_ativo;
+    console.log(
+      `[Configurações] Atualizando ID ${id}: Campo ${field}, Valor ${value}`
+    );
 
-    if (action === "toggleAtivo") {
-      newIsAtivo = !colaborador.is_ativo;
-    }
-    if (action === "toggleRole") {
-      newRole = colaborador.role === "User" ? "Admin" : "User";
-    }
+    // Encontra o usuário no estado local para ter os dados completos
+    const userToUpdate = colaboradores.find((c) => c.id === id);
+    if (!userToUpdate) return;
 
-    if (colaborador.login === user?.login) {
-      toast.error("Você não pode alterar seu próprio acesso.");
-      return;
-    }
+    // Monta o payload (corpo da requisição)
+    // O backend espera ambos os campos
+    const payload = {
+      role: field === "role" ? value : userToUpdate.role,
+      is_ativo: field === "is_ativo" ? value : userToUpdate.is_ativo,
+    };
 
     try {
-      const response = await apiFetch(
-        `http://localhost:5000/api/colaboradores/${colaborador.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            role: newRole,
-            is_ativo: newIsAtivo,
-          }),
-        }
-      );
+      const response = await apiFetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
 
       const data = await response.json();
+
       if (!response.ok) {
-        throw new Error(data.error || "Falha ao atualizar usuário");
+        throw new Error(data.error || "Falha ao atualizar");
       }
 
-      toast.success("Usuário atualizado!");
-      fetchColaboradores(); // Recarrega a lista
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro desconhecido");
+      toast.success("Usuário atualizado com sucesso!");
+      // Atualiza a lista localmente para refletir a mudança
+      setColaboradores(
+        colaboradores.map((c) => (c.id === id ? { ...c, [field]: value } : c))
+      );
+    } catch (error) {
+      console.error("[Configurações] Erro ao atualizar:", error);
+      toast.error("Erro ao atualizar usuário.", {
+        description: (error as Error).message,
+      });
+      // Recarrega a lista do zero em caso de erro para reverter a mudança otimista
+      fetchColaboradores();
     }
   };
 
-  // Redireciona se não for Admin (dupla segurança)
-  // Verifica *após* o loading inicial do auth
-  if (!user && !isLoading) {
-    return <Navigate to="/login" replace />;
-  }
-  if (user && user.role !== "Admin") {
-    toast.error("Acesso negado.");
-    return <Navigate to="/" replace />;
-  }
-
-  // Mostra um spinner de página inteira
-  if (isLoading && colaboradores.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      {/* O Sidebar é necessário aqui pois esta é uma página "irmã" do Dashboard */}
+      {/* Usamos a prop 'Configuracoes' para a Sidebar saber qual item marcar */}
       <Sidebar
-        activeSection="Configurações"
+        activeSection={"Configuracoes"}
         onSectionChange={(section) => {
-          // Se clicar em qualquer outra seção, volta para a home (Dashboard)
-          if (section !== "Configurações") {
-            window.location.href = "/";
-          }
+          // Se o usuário clicar em outra seção, nós navegamos
+          window.location.href =
+            section === "Dashboard" ? "/" : `/${section.toLowerCase()}`;
         }}
       />
+
       <main className="ml-64 p-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-3xl font-bold text-foreground">
-              Gerenciar Colaboradores
-            </h2>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Novo Colaborador
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Criar Novo Colaborador</DialogTitle>
-                  <DialogDescription>
-                    A senha deve ser forte e informada ao usuário.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
+          <h1 className="text-3xl font-bold text-foreground">Configurações</h1>
+
+          {/* Card de Novo Colaborador */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Criar Novo Colaborador
+              </CardTitle>
+              <CardDescription>
+                Preencha os dados para criar um novo acesso ao sistema.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateColaborador} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="nome">Nome Completo</Label>
                     <Input
                       id="nome"
-                      value={novoNome}
-                      onChange={(e) => setNovoNome(e.target.value)}
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      placeholder="Ex: João da Silva"
+                      disabled={isSubmitting}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="login">Login (sem espaços)</Label>
+                    <Label htmlFor="login">Login de Acesso</Label>
                     <Input
                       id="login"
-                      value={novoLogin}
-                      onChange={(e) => setNovoLogin(e.target.value)}
+                      value={login}
+                      onChange={(e) => setLogin(e.target.value)}
+                      placeholder="Ex: joao.silva"
+                      disabled={isSubmitting}
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="senha">Senha</Label>
+                    <Label htmlFor="senha">Senha Provisória</Label>
                     <Input
                       id="senha"
                       type="password"
-                      value={novaSenha}
-                      onChange={(e) => setNovaSenha(e.target.value)}
+                      value={senha}
+                      onChange={(e) => setSenha(e.target.value)}
+                      placeholder="••••••••"
+                      disabled={isSubmitting}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="role">Permissão (Role)</Label>
+                    <Label htmlFor="role">Nível de Acesso (Role)</Label>
                     <Select
-                      value={novoRole}
-                      onValueChange={(val) =>
-                        setNovoRole(val as "User" | "Admin")
+                      value={role}
+                      onValueChange={(value: "User" | "Admin") =>
+                        setRole(value)
                       }
+                      disabled={isSubmitting}
                     >
-                      <SelectTrigger id="role">
-                        <SelectValue />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o nível" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="User">
-                          Usuário Padrão (User)
-                        </SelectItem>
+                        <SelectItem value="User">Colaborador (User)</SelectItem>
                         <SelectItem value="Admin">
                           Administrador (Admin)
                         </SelectItem>
@@ -280,124 +259,86 @@ export default function Configuracoes() {
                     </Select>
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleCreateUser} disabled={isSubmitting}>
-                    {isSubmitting && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Salvar
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
 
-          {/* Tabela de Usuários */}
-          <div className="bg-card rounded-lg shadow-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Login</TableHead>
-                  <TableHead>Permissão</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading && colaboradores.length === 0 ? ( // Ajuste para mostrar loading na tabela
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center p-8">
-                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  colaboradores.map((colaborador) => (
-                    <TableRow key={colaborador.id}>
-                      <TableCell className="font-medium">
-                        {colaborador.nome_colaborador}
-                      </TableCell>
-                      <TableCell>{colaborador.login}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            colaborador.role === "Admin"
-                              ? "default"
-                              : "secondary"
-                          }
-                        >
-                          {colaborador.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            colaborador.is_ativo ? "success" : "destructive"
-                          }
-                        >
-                          {colaborador.is_ativo ? "Ativo" : "Bloqueado"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() =>
-                                handleUpdateUser(colaborador, "toggleAtivo")
-                              }
-                              disabled={user?.login === colaborador.login}
-                            >
-                              {colaborador.is_ativo ? (
-                                <UserX className="h-4 w-4" />
-                              ) : (
-                                <UserCheck className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {colaborador.is_ativo ? "Bloquear" : "Ativar"}{" "}
-                              Usuário
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() =>
-                                handleUpdateUser(colaborador, "toggleRole")
-                              }
-                              disabled={user?.login === colaborador.login}
-                            >
-                              {colaborador.role === "User" ? "Admin" : "User"}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {colaborador.role === "User"
-                                ? "Promover para Admin"
-                                : "Rebaixar para User"}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Salvar Novo Colaborador
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Card da Lista de Colaboradores */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Gerenciar Colaboradores</CardTitle>
+              <CardDescription>
+                Atualize o nível de acesso e o status dos colaboradores.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Login</TableHead>
+                      <TableHead>Nível (Role)</TableHead>
+                      <TableHead>Status (Ativo)</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {colaboradores.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">
+                          {user.nome_colaborador}
+                        </TableCell>
+                        <TableCell>{user.login}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={user.role}
+                            onValueChange={(value: "User" | "Admin") =>
+                              handleUpdateColaborador(user.id, "role", value)
+                            }
+                          >
+                            <SelectTrigger className="w-[180px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="User">Colaborador</SelectItem>
+                              <SelectItem value="Admin">
+                                Administrador
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={user.is_ativo}
+                            onCheckedChange={(checked) =>
+                              handleUpdateColaborador(
+                                user.id,
+                                "is_ativo",
+                                checked
+                              )
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

@@ -1,14 +1,16 @@
+// src/pages/Dashboard.tsx
+// (Arquivo completo com a correção de navegação)
+
+// --- MUDANÇA 1: Importar o 'useNavigate' ---
 import { useState } from "react";
+import { useNavigate } from "react-router-dom"; // <-- ADICIONADO
 import Sidebar from "@/components/Sidebar";
 import SearchModule from "@/components/SearchModule";
 import { Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-// --- MUDANÇA: Importar Checkbox e Label ---
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-// --- MUDANÇA: Importar nosso novo "Mensageiro" ---
 import { apiFetch } from "@/lib/api";
-// --- FIM DA MUDANÇA ---
 
 // Tipo para os resultados de todas as seções
 type AllResultsState = Record<string, any[]>;
@@ -16,11 +18,12 @@ type AllResultsState = Record<string, any[]>;
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState("Pessoa");
 
+  // --- MUDANÇA 2: Inicializar o 'navigate' ---
+  const navigate = useNavigate(); // <-- ADICIONADO
+
   // --- Estados que subiram do SearchModule ---
   const [query, setQuery] = useState("");
-  // --- MUDANÇA: Estado para o Checkbox ---
   const [isCpfSearch, setIsCpfSearch] = useState(false);
-  // --- FIM DA MUDANÇA ---
   const [allResults, setAllResults] = useState<AllResultsState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,20 +45,15 @@ export default function Dashboard() {
     setError(null);
 
     try {
-      // --- MUDANÇA: Adiciona o parâmetro &cpf=true/false na URL ---
       const apiUrl = `http://localhost:5000/api/search/all?q=${encodeURIComponent(
         query
       )}&cpf=${isCpfSearch}`;
-      // --- FIM DA MUDANÇA ---
 
       console.log(`[Modo Turbo Dashboard] Chamando API Global: ${apiUrl}`);
 
-      // --- MUDANÇA: Trocar 'fetch' por 'apiFetch' ---
       const response = await apiFetch(apiUrl);
-      // --- FIM DA MUDANÇA ---
 
       if (!response.ok) {
-        // O apiFetch já vai tratar o 401, mas podemos ter outros erros
         const data = await response.json();
         throw new Error(
           data.error ||
@@ -91,17 +89,33 @@ export default function Dashboard() {
   };
   // --- Fim da lógica de busca ---
 
-  // Limpa os resultados quando a secção muda
+  // --- MUDANÇA 3: Lógica de navegação corrigida ---
   const handleSectionChange = (section: string) => {
+    // Se a seção for 'Configuracoes' (ou 'Relatórios'), navega para a rota dela
+    if (section === "Configuracoes") {
+      console.log("[Modo Turbo Dashboard] Navegando para /configuracoes...");
+      navigate("/configuracoes");
+      return; // Importante parar a execução aqui!
+    }
+
+    // NOTA: Se 'Relatórios' também virar uma página separada, adicione-a aqui:
+    // if (section === "Relatórios") {
+    //   console.log("[Modo Turbo Dashboard] Navegando para /relatorios...");
+    //   navigate("/relatorios");
+    //   return;
+    // }
+
+    // Se for qualquer outra seção, é uma aba de dados. Apenas atualiza o estado.
     setActiveSection(section);
     console.log(`[Modo Turbo Dashboard] Mudou para aba: ${section}`);
   };
+  // --- FIM DA MUDANÇA ---
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar
         activeSection={activeSection}
-        onSectionChange={handleSectionChange}
+        onSectionChange={handleSectionChange} // Esta função agora está correta
       />
 
       <main className="ml-64 p-8">
@@ -143,7 +157,7 @@ export default function Dashboard() {
                 </Button>
               </div>
 
-              {/* --- MUDANÇA: Bloco do Checkbox --- */}
+              {/* --- Bloco do Checkbox --- */}
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="cpf-search"
@@ -164,7 +178,9 @@ export default function Dashboard() {
           </div>
           {/* --- Fim da Barra de Busca --- */}
 
-          {/* O SearchModule agora é apenas um 'Display' */}
+          {/* O SearchModule agora está seguro, pois 'activeSection' NUNCA
+            será "Configuracoes" (o componente navegará antes).
+          */}
           <SearchModule
             type={activeSection}
             query={query} // Passa a query para saber o que foi buscado
